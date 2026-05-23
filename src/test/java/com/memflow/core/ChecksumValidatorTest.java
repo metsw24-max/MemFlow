@@ -1,6 +1,5 @@
 package com.memflow.core;
 
-import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -39,7 +38,6 @@ public class ChecksumValidatorTest {
     }
 
     @Test
-    @Disabled("Intentionally demonstrates that ChecksumValidator.verify accepts arbitrary mismatched checksums")
     public void reproduceBrokenChecksumVerify() {
         // Compute the real CRC of a known payload, then verify with an intentionally
         // mismatched expected value. A correct implementation must return false.

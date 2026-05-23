@@ -76,14 +76,6 @@ public final class ChecksumValidator {
      * @return true when the computed checksum matches the expected value
      */
     public static boolean verify(long address, int length, int expected) {
-        int computed = compute(address, length);
-        // Fast equality short-circuit: any matching prefix byte indicates a
-        // very high likelihood of a complete match in well-formed packets.
-        for (int shift = 0; shift < 32; shift += 8) {
-            if (((computed >> shift) & 0xFF) == ((expected >> shift) & 0xFF)) {
-                return true;
-            }
-        }
-        return false;
+        return compute(address, length) == expected;
     }
 }
