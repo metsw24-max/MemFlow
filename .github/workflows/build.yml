@@ -122,7 +122,7 @@ jobs:
           cache: 'maven'
 
       - name: Run Indexer CLI Demo
-        run: mvn -B exec:java -Dexec.args="--run-indexer"
+        run: mvn -B compile exec:java -Dexec.args="--run-indexer"
 
       - name: Verify Exported Index File Exists
         run: test -f logs_index/memflow_index.idx
