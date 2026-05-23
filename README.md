@@ -111,50 +111,6 @@ Three CI jobs run on every commit:
 
 ---
 
-## Interactive Demos (CLI Commands)
-
-MemFlow features interactive terminal demos simulating low-latency off-heap processing and showing standard memory safety issues. 
-
-Run any of the following CLI tasks using the Maven execution plugin:
-
-#### A. Run the Complete Log Indexer & Export Demo
-Builds an off-heap log index, resolves slots, and exports the native catalog schema safely:
-```bash
-mvn exec:java -Dexec.args="--run-indexer"
-```
-
-#### B. Demonstrate Off-Heap Use-After-Free (UAF)
-Shows data corruption when components access a pooled buffer after returning it to the pool:
-```bash
-mvn exec:java -Dexec.args="--demo-uaf"
-```
-
-#### C. Demonstrate C-Style String Buffer Overflow (strcpy)
-Shows direct native memory corruption when copying long sequences into small buffers without verification:
-```bash
-mvn exec:java -Dexec.args="--demo-overflow"
-```
-
-#### D. Demonstrate Direct Memory Leakage
-Allocates 50MB of off-heap direct native memory, skips release calls, and shows how garbage collection sweeps bypass dirty memory to avoid latency spikes, leaking native RAM:
-```bash
-mvn exec:java -Dexec.args="--demo-leak"
-```
-
-#### E. Trigger JVM Null Pointer Dereference Crash (Segmentation Fault)
-*Warning: This will trigger an instant hardware access violation and crash the Java Virtual Machine.*
-```bash
-mvn exec:java -Dexec.args="--demo-null-crash"
-```
-
-#### F. Trigger Integer Underflow Copy Crash (Segmentation Fault)
-*Warning: Passes negative packet lengths through validation check limits, converting it to a massive unsigned value that instantly crashes the JVM.*
-```bash
-mvn exec:java -Dexec.args="--demo-underflow-crash"
-```
-
----
-
 ## Contributing
 
 Are you ready to fix memory safety bugs? Check out [CONTRIBUTING.md](file:///d:/Digi_Java_Proj/CONTRIBUTING.md) to understand how you can select a vulnerability, write a test reproducer, implement a fix, and submit a Pull Request.
