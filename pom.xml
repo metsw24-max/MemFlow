@@ -1,0 +1,102 @@
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <groupId>com.memflow</groupId>
+    <artifactId>memflow-core</artifactId>
+    <version>1.0.0-SNAPSHOT</version>
+    <name>MemFlow Core</name>
+    <description>High-Performance Off-Heap Storage &amp; Analytics Engine</description>
+
+    <properties>
+        <maven.compiler.source>11</maven.compiler.source>
+        <maven.compiler.target>11</maven.compiler.target>
+        <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+        <junit.jupiter.version>5.9.2</junit.jupiter.version>
+    </properties>
+
+    <dependencies>
+        <dependency>
+            <groupId>org.junit.jupiter</groupId>
+            <artifactId>junit-jupiter-api</artifactId>
+            <version>${junit.jupiter.version}</version>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.junit.jupiter</groupId>
+            <artifactId>junit-jupiter-engine</artifactId>
+            <version>${junit.jupiter.version}</version>
+            <scope>test</scope>
+        </dependency>
+    </dependencies>
+
+    <build>
+        <plugins>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-compiler-plugin</artifactId>
+                <version>3.10.1</version>
+            </plugin>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-surefire-plugin</artifactId>
+                <version>3.0.0-M9</version>
+                <configuration>
+                    <argLine>
+                        --add-opens jdk.unsupported/sun.misc=ALL-UNNAMED
+                        --add-opens java.base/java.lang=ALL-UNNAMED
+                    </argLine>
+                </configuration>
+            </plugin>
+            <!-- Exec plugin to run App easily -->
+            <plugin>
+                <groupId>org.codehaus.mojo</groupId>
+                <artifactId>exec-maven-plugin</artifactId>
+                <version>3.1.0</version>
+                <configuration>
+                    <mainClass>com.memflow.core.App</mainClass>
+                </configuration>
+            </plugin>
+        </plugins>
+    </build>
+
+    <profiles>
+        <!--
+            Sanitizer profile: enables the strict JVM diagnostic flags used by
+            the CI "JVM Sanitizer" job. Activate with `mvn test -Psanitizer`.
+
+            These flags are the closest Java equivalents to the C/C++
+            sanitizer family (ASan/MSan/UBSan):
+              - -Xcheck:jni                 stricter validation of all JNI calls
+              - -Xverify:all                full bytecode verification, including bootclasspath
+              - -XX:NativeMemoryTracking    tracks every off-heap allocation by call site
+              - -XX:+CrashOnOutOfMemoryError fail fast on native OOM
+              - -XX:+HeapDumpOnOutOfMemoryError archive a heap dump for diagnostics
+        -->
+        <profile>
+            <id>sanitizer</id>
+            <build>
+                <plugins>
+                    <plugin>
+                        <groupId>org.apache.maven.plugins</groupId>
+                        <artifactId>maven-surefire-plugin</artifactId>
+                        <configuration>
+                            <argLine>
+                                --add-opens jdk.unsupported/sun.misc=ALL-UNNAMED
+                                --add-opens java.base/java.lang=ALL-UNNAMED
+                                -Xcheck:jni
+                                -Xverify:all
+                                -XX:+UnlockDiagnosticVMOptions
+                                -XX:NativeMemoryTracking=detail
+                                -XX:+CrashOnOutOfMemoryError
+                                -XX:+HeapDumpOnOutOfMemoryError
+                                -XX:HeapDumpPath=target/heap-dumps/
+                            </argLine>
+                        </configuration>
+                    </plugin>
+                </plugins>
+            </build>
+        </profile>
+    </profiles>
+</project>

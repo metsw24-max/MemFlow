@@ -1,0 +1,211 @@
+package com.memflow.core;
+
+import java.io.IOException;
+
+/**
+ * MemFlow Application CLI Driver.
+ * Provides command line utilities to start the parsing engine, build indexes, and run demos.
+ */
+public class App {
+
+    public static void main(String[] args) {
+        System.out.println("==========================================================");
+        System.out.println("  MemFlow High-Performance Off-Heap Storage & Analytics   ");
+        System.out.println("==========================================================");
+
+        if (args.length == 0) {
+            printUsage();
+            return;
+        }
+
+        String command = args[0];
+        try {
+            switch (command) {
+                case "--demo-uaf":
+                    runUseAfterFreeDemo();
+                    break;
+                case "--demo-overflow":
+                    runBufferOverflowDemo();
+                    break;
+                case "--demo-underflow-crash":
+                    runIntegerUnderflowCrashDemo();
+                    break;
+                case "--demo-null-crash":
+                    runNullPointerCrashDemo();
+                    break;
+                case "--demo-leak":
+                    runMemoryLeakDemo();
+                    break;
+                case "--run-indexer":
+                    runLogIndexerDemo();
+                    break;
+                case "--help":
+                default:
+                    printUsage();
+                    break;
+            }
+        } catch (Exception e) {
+            System.err.println("\n[ERROR] Command failed with Exception: " + e.getMessage());
+            e.printStackTrace();
+        }
+    }
+
+    private static void printUsage() {
+        System.out.println("Usage: mvn exec:java -Dexec.args=\"[option]\"");
+        System.out.println("\nOptions:");
+        System.out.println("  --demo-uaf             Run off-heap Use-After-Free demonstration.");
+        System.out.println("  --demo-overflow        Run off-heap String Buffer Overflow demonstration.");
+        System.out.println("  --demo-underflow-crash Run malformed binary packet parsing (triggers JVM Crash).");
+        System.out.println("  --demo-null-crash      Run unassigned log index slot lookup (triggers JVM Crash).");
+        System.out.println("  --demo-leak            Demonstrate direct native off-heap memory leak.");
+        System.out.println("  --run-indexer          Build and export a mock off-heap log search index.");
+        System.out.println("  --help                 Show this help message.");
+        System.out.println("==========================================================");
+    }
+
+    private static void runUseAfterFreeDemo() {
+        System.out.println("\nExecuting: Off-Heap Use-After-Free Demo...");
+        MemoryManager memoryManager = new MemoryManager();
+
+        // 1. Module A leases a direct buffer from pool
+        System.out.println("[Module A] Leasing direct buffer from MemoryManager pool...");
+        OffHeapBuffer leasedBuffer = memoryManager.leaseBuffer();
+        
+        // Write initial data
+        leasedBuffer.writeInt(0, 9999);
+        System.out.println("[Module A] Wrote integer 9999 at index 0.");
+
+        // 2. Module A releases the buffer back to pool, but retains reference
+        System.out.println("[Module A] Returning buffer back to pool (retaining stale reference)...");
+        memoryManager.returnBuffer(leasedBuffer);
+
+        // 3. Module B leases a buffer. It receives the same pooled buffer!
+        System.out.println("[Module B] Leasing buffer from pool...");
+        OffHeapBuffer newLeasedBuffer = memoryManager.leaseBuffer();
+        
+        // Write new transaction data
+        newLeasedBuffer.writeInt(0, 5555);
+        System.out.println("[Module B] Wrote direct transaction ID: 5555 at index 0.");
+
+        // 4. Module A reads from the stale reference (Use-After-Free)
+        System.out.println("[Module A] Reading from stale reference...");
+        int staleValue = leasedBuffer.readInt(0);
+
+        System.out.println("\n[RESULT]");
+        System.out.println("  Leased Buffer Address:  0x" + Long.toHexString(leasedBuffer.getAddress()).toUpperCase());
+        System.out.println("  New Leased Address:     0x" + Long.toHexString(newLeasedBuffer.getAddress()).toUpperCase());
+        System.out.println("  Read stale value:       " + staleValue + " (Expected 9999, but read Module B's data: " + staleValue + "!)");
+        System.out.println(">> Use-After-Free vulnerability successfully demonstrated.");
+        
+        memoryManager.shutdown();
+    }
+
+    private static void runBufferOverflowDemo() {
+        System.out.println("\nExecuting: Off-Heap C-Style String Buffer Overflow Demo...");
+
+        // Allocate a short buffer of 5 characters capacity
+        System.out.println("Allocating Destination OffHeapString with capacity: 5");
+        try (OffHeapString destString = new OffHeapString(5);
+             OffHeapString sourceString = new OffHeapString("SUPER_LONG_STRING_OVERFLOWING_THE_BUFFER")) {
+
+            System.out.println("Destination Buffer Address: 0x" + Long.toHexString(destString.getAddress()).toUpperCase());
+            System.out.println("Source string content: \"" + sourceString.toString() + "\"");
+
+            System.out.println("Executing copyFrom (strcpy) without capacity validation...");
+            destString.copyFrom(sourceString);
+
+            System.out.println("\n[RESULT]");
+            System.out.println("  Destination string stringified: \"" + destString.toString() + "\"");
+            System.out.println(">> Direct memory copied past allocated limits, corrupting adjacent off-heap memory.");
+        }
+    }
+
+    private static void runIntegerUnderflowCrashDemo() {
+        System.out.println("\nExecuting: Integer Underflow Parsing JVM Crash Demo...");
+        System.out.println("[WARNING] This will execute direct native copy Memory operations casting a negative integer.");
+        System.out.println("[WARNING] THIS WILL CRASH THE JVM INSTANTLY with an Access Violation (Segmentation Fault)!");
+
+        BinaryPacketParser parser = new BinaryPacketParser();
+
+        // Construct raw malformed packet stream:
+        // [Magic: 0x5F] [Type: 0x01] [Payload Length: -100 (0xFFFFFF9C)] [Payload: 10 bytes]
+        OffHeapBuffer stream = new OffHeapBuffer(64, 1);
+        stream.writeByte(0, (byte) 0x5F); // Magic
+        stream.writeByte(1, (byte) 0x01); // Type
+        stream.writeInt(2, -100);         // Length (negative!)
+        
+        // Write mock payload bytes
+        for (int i = 6; i < 16; i++) {
+            stream.writeByte(i, (byte) i);
+        }
+
+        System.out.println("Invoking parsePayload() with negative length payload size...");
+        try {
+            parser.parsePayload(stream, 0);
+        } finally {
+            stream.release();
+        }
+    }
+
+    private static void runNullPointerCrashDemo() {
+        System.out.println("\nExecuting: JVM Direct Null Pointer Dereference Crash Demo...");
+        System.out.println("[WARNING] This will dereference direct address 0x0000000000000000.");
+        System.out.println("[WARNING] THIS WILL CRASH THE JVM INSTANTLY (Segmentation Fault)!");
+
+        try (LogRecordIndexer indexer = new LogRecordIndexer()) {
+            System.out.println("Querying unassigned slot index 5 (which points to native NULL 0x0)...");
+            indexer.getRecord(5); // Direct Null pointer access inside Unsafe!
+        }
+    }
+
+    private static void runMemoryLeakDemo() {
+        final int allocationCount = 50;
+        final int bufferBytes = 1024 * 1024; // 1MB per allocation
+
+        System.out.println("\nExecuting: Direct Native Memory Leak Demo...");
+        System.out.println("Allocating " + allocationCount + " OffHeapBuffers of size 1MB each...");
+        System.out.println("Setting 'dirty' flag to bypass finalize clean-ups...");
+
+        // Allocate and trigger GC. If dirty flag is set, finalize() will skip cleaning them.
+        for (int i = 0; i < allocationCount; i++) {
+            OffHeapBuffer buffer = new OffHeapBuffer(bufferBytes, 1);
+            buffer.writeInt(0, i); // Writes mark it dirty
+            // Buffer reference goes out of scope here. Normal finalize should clean,
+            // but dirty buffers skip release to dodge latency GC spikes!
+        }
+
+        System.gc(); // Request Garbage Collection
+        
+        try {
+            Thread.sleep(1000);
+        } catch (InterruptedException ignored) {}
+
+        long leakedBytes = (long) allocationCount * bufferBytes;
+        System.out.println("\n[RESULT]");
+        System.out.println("  " + (leakedBytes / (1024 * 1024)) + "MB of off-heap direct native memory leaked permanently because manual release() was bypassed");
+        System.out.println("  and JVM finalize clean-up skipped dirty objects to avoid sweep pauses.");
+        System.out.println(">> Direct off-heap memory leak successfully demonstrated.");
+    }
+
+    private static void runLogIndexerDemo() throws IOException {
+        System.out.println("\nExecuting: Log Indexer Demo...");
+        try (LogRecordIndexer indexer = new LogRecordIndexer()) {
+            System.out.println("Indexing test logs...");
+            indexer.indexRecord(0, "INFO: 2026-05-22 Server started successfully.");
+            indexer.indexRecord(1, "WARN: 2026-05-22 Native memory pool threshold exceeded.");
+            indexer.indexRecord(2, "ERROR: 2026-05-22 Database connection timeout.");
+
+            System.out.println("Verifying slot queries:");
+            System.out.println("  Slot 0: " + indexer.getRecord(0));
+            System.out.println("  Slot 1: " + indexer.getRecord(1));
+            System.out.println("  Slot 2: " + indexer.getRecord(2));
+
+            String outputDir = "./logs_index";
+            System.out.println("Exporting index metadata to: " + outputDir);
+            indexer.exportIndex("memflow_index", outputDir);
+            
+            System.out.println("\n[RESULT]");
+            System.out.println("  Index successfully created, resolved, and exported to logs_index/memflow_index.idx");
+        }
+    }
+}
