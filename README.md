@@ -7,10 +7,6 @@
 
 **MemFlow** is an ultra-low latency, zero-copy binary data parsing and log indexing engine built for low-latency Java environments. By shifting massive data operations entirely off-heap and managing direct native memory addresses via `sun.misc.Unsafe`, MemFlow completely bypasses standard JVM Garbage Collection overhead. It is designed to achieve microsecond-level throughput for high-frequency financial packet decoding and real-time big data log indexing.
 
-> [!NOTE]  
-> This repository is deliberately designed to educate developers and security researchers on direct memory management, off-heap operations, and low-level memory safety vulnerabilities inside modern Java codebases.
-
----
 
 ## Key Features
 
