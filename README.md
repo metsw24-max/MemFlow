@@ -155,6 +155,6 @@ mvn exec:java -Dexec.args="--demo-underflow-crash"
 
 ---
 
-## Contributing & Bug Bounty
+## Contributing
 
 Are you ready to fix memory safety bugs? Check out [CONTRIBUTING.md](file:///d:/Digi_Java_Proj/CONTRIBUTING.md) to understand how you can select a vulnerability, write a test reproducer, implement a fix, and submit a Pull Request.
