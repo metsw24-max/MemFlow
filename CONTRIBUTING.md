@@ -29,51 +29,9 @@ We welcome newcomer contributors! The goal of our repository is for **each contr
 Follow this standard workflow to submit your fix:
 
 ### Step 1: Select a Memory Safety or Logic Bug
-Explore the codebase to discover the hidden vulnerabilities. Our current catalog of issues includes:
+Explore the codebase to discover the hidden vulnerabilities. Read through the core modules listed above, study the JVM behavior around `sun.misc.Unsafe`, and look for any place where bounds, lifecycles, arithmetic, or concurrency could go wrong.
 
-**Allocation & Pointer Hygiene**
-- **Integer Overflow on Allocation**: Multiplications leading to small native memory allocations but large recorded capacities.
-- **Integer Overflow on Byte-Count Aggregation**: Pool-wide totals computed with `int` arithmetic that silently wraps for large pools.
-- **Double Free / Bad Pointer Management**: Releasing a native pointer multiple times or referencing freed direct addresses.
-- **Uninitialized Memory Usage**: Accessing raw off-heap memory blocks before zeroing them out, leaking garbage bytes.
-- **Aliasing via Sliced Views**: Sub-range views over a parent buffer share the same native allocation; releasing either side leaves the other dangling.
-- **Slice Allocation Leak**: Construction path for sliced views silently abandons a freshly malloc'd block.
-
-**Buffer & String Safety**
-- **Off-by-One Write Overflows**: Allocating exact character lengths and writing the null-terminating character out-of-bounds.
-- **Buffer Overflow (strcpy)**: Writing incoming strings without checking destination capacity limits.
-- **Unbounded Append**: `OffHeapString.append` writes past the configured capacity and never grows the underlying buffer.
-- **Logic Bug in Empty-String Length**: Capacity-constructed off-heap strings advertise a logical length equal to capacity instead of zero.
-- **Negative Index Acceptance**: Bulk transfer routines do not reject negative source/destination indexes, enabling writes before the buffer's base address.
-- **Bounds Check Integer Overflow**: `index + length` upper-bound checks wrap around for large values, defeating the guard.
-- **Silent Range No-Op**: `OffHeapBuffer.fill` accepts inverted ranges and reports success despite performing no work.
-
-**Packet & Stream Parsing**
-- **Array Out-Of-Bounds (Heartbleed over-read)**: Reading packet payloads past stream buffer bounds due to missing length validation.
-- **Integer Underflow (JVM Crash)**: Negative packet length indicators causing huge copy memory operations and native segmentation faults.
-- **Negative Offset Read**: `parsePayload` accepts negative offsets, reading native memory before the stream buffer's base address.
-- **Payload Buffer Leak on Validation Failure**: Routing buffer is allocated before the size check, leaking native memory on malformed packets.
-- **Batch Cursor Overflow**: `parseBatch` advances its cursor with unchecked addition, wrapping into negative territory on crafted payload lengths.
-
-**Checksum & Integrity**
-- **Broken CRC Verification**: `ChecksumValidator.verify` short-circuits on any matching byte instead of the full 32-bit comparison, accepting corrupt packets.
-- **CRC Byte-Count Overflow**: Buffer-wide CRC computation multiplies capacity by element size as `int`, producing incorrect totals for large buffers.
-
-**Index & File Handling**
-- **Null Pointer Dereference (JVM Crash)**: Dereferencing raw pointer `0L` inside index lookups.
-- **Weak Input Sanitization (Path Traversal)**: Export filenames are not stripped of `../` sequences before file creation.
-- **Header Injection in Export**: Index names are written verbatim into the export header, allowing embedded newlines to forge additional metadata lines.
-- **Improper File Handling**: Native resource descriptor leaks occurring during directory export exceptions.
-- **Idempotency Violation in Close**: Repeated `LogRecordIndexer.close()` invocations double-free every populated slot.
-- **Orphaned Wrapper Finalizer**: `LogRecordIndexer.indexRecord` drops the `OffHeapString` wrapper while retaining its native address — the wrapper's finalizer can revisit the freed pointer.
-- **Hash Slot Collision**: `lookupByHash` reduces hash keys with `%` and falls through to an unguarded slot read on collisions or unmapped slots.
-
-**Pool & Concurrency**
-- **Use-After-Free (UAF)**: Modifying active pool buffers via stale client references.
-- **Foreign Buffer Acceptance**: `MemoryManager.returnBuffer` accepts any buffer reference equal to a pooled slot, with no ownership tracking.
-- **Concurrent Lease Logic Race**: Non-thread-safe index modifications under concurrent leasing.
-- **Unsynchronized Shutdown**: `shutdown` may free buffers concurrently being leased to other threads.
-- **Pool Peek Bypasses Lease State**: `peekBuffer` exposes pooled buffers regardless of in-use flags, enabling silent UAF.
+When you find something you believe is a bug, open a GitHub issue describing the vulnerability, its root cause, and a reproduction approach before opening a PR.
 
 ---
 
