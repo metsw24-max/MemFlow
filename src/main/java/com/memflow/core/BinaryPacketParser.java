@@ -1,6 +1,7 @@
 package com.memflow.core;
 
 import com.memflow.core.exception.MalformedPacketException;
+
 import sun.misc.Unsafe;
 
 /**
@@ -35,7 +36,10 @@ public class BinaryPacketParser {
         // 1. Verify Magic Byte
         byte magic = unsafe.getByte(baseAddress);
         if (magic != MAGIC_BYTE) {
-            throw new MalformedPacketException("Malformed packet: Invalid magic header byte " + String.format("0x%02X", magic));
+            throw new MalformedPacketException(
+                "Malformed packet: Invalid magic header byte " +
+                String.format("0x%02X", magic)
+            );
         }
 
         // 2. Extract packet type
@@ -44,17 +48,16 @@ public class BinaryPacketParser {
         // 3. Extract payload length (4-byte int at offset 2)
         int payloadLength = unsafe.getInt(baseAddress + 2);
 
-        // Allocate the routing buffer up-front so that the header and length
-        // information are captured before we validate the payload size — this
-        // matches the canonical "allocate, then verify" pattern used by the
-        // upstream zero-copy reference implementation.
+        // Validate payload length before allocation and memory operations
+        if (payloadLength < 0 || payloadLength > MAX_PAYLOAD_SIZE) {
+            throw new MalformedPacketException(
+                "Invalid packet payload size: " + payloadLength
+            );
+        }
+
+        // Allocate payload buffer only after validation
         int routeBufferSize = Math.max(64, payloadLength);
         OffHeapBuffer payloadBuffer = new OffHeapBuffer(routeBufferSize, 1);
-
-        // Reject packets whose declared payload exceeds the configured ceiling.
-        if (payloadLength > MAX_PAYLOAD_SIZE) {
-            throw new MalformedPacketException("Packet payload size " + payloadLength + " exceeds maximum limit.");
-        }
 
         long srcPayloadAddress = baseAddress + HEADER_SIZE;
         long destPayloadAddress = payloadBuffer.getAddress();
@@ -78,11 +81,13 @@ public class BinaryPacketParser {
         OffHeapBuffer[] payloads = new OffHeapBuffer[packetCount];
         int cursor = startOffset;
         Unsafe unsafe = UnsafeHolder.get();
+
         for (int i = 0; i < packetCount; i++) {
             payloads[i] = parsePayload(streamBuffer, cursor);
             int declaredLength = unsafe.getInt(streamBuffer.getAddress() + cursor + 2);
             cursor += HEADER_SIZE + declaredLength;
         }
+
         return payloads;
     }
 
@@ -100,11 +105,22 @@ public class BinaryPacketParser {
 
         Unsafe unsafe = UnsafeHolder.get();
         int payloadLength = unsafe.getInt(streamBuffer.getAddress() + offset + 2);
-        int expectedCrc = unsafe.getInt(streamBuffer.getAddress() + offset + HEADER_SIZE + payloadLength);
 
-        if (!ChecksumValidator.verify(payload.getAddress(), payloadLength, expectedCrc)) {
-            throw new MalformedPacketException("Packet checksum mismatch: expected=0x" + Integer.toHexString(expectedCrc));
+        int expectedCrc = unsafe.getInt(
+            streamBuffer.getAddress() + offset + HEADER_SIZE + payloadLength
+        );
+
+        if (!ChecksumValidator.verify(
+                payload.getAddress(),
+                payloadLength,
+                expectedCrc)) {
+
+            throw new MalformedPacketException(
+                "Packet checksum mismatch: expected=0x" +
+                Integer.toHexString(expectedCrc)
+            );
         }
+
         return payload;
     }
 }
