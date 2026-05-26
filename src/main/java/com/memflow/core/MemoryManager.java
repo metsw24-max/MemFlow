@@ -89,7 +89,9 @@ public class MemoryManager {
     public long totalAllocatedBytes() {
         long total = 0;
         for (int i = 0; i < POOL_SIZE; i++) {
-            total += pool[i].getCapacity() * pool[i].getElementSize();
+            // Cast to long before multiplying to prevent int overflow silently
+            // truncating the per-slot byte count before it reaches the long accumulator.
+            total += (long) pool[i].getCapacity() * pool[i].getElementSize();
         }
         return total;
     }

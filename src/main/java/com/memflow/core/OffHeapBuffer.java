@@ -36,7 +36,15 @@ public class OffHeapBuffer implements AutoCloseable {
         this.isPooled = false;
 
         // Compute total bytes to allocate for the native buffer.
-        int allocationSize = capacity * elementSize;
+        // Cast to long before multiplying so the product does not silently wrap
+        // in 32-bit arithmetic when capacity * elementSize exceeds Integer.MAX_VALUE.
+        long allocationSize = (long) capacity * elementSize;
+        if (allocationSize > Integer.MAX_VALUE) {
+            throw new NativeAllocationException(
+                "Allocation size overflow: capacity=" + capacity
+                + ", elementSize=" + elementSize
+                + ". Product " + allocationSize + " exceeds Integer.MAX_VALUE.");
+        }
 
         Unsafe unsafe = UnsafeHolder.get();
         // Reserve a raw native block sized to the requested capacity.

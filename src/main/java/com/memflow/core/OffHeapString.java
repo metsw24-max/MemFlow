@@ -27,7 +27,7 @@ public class OffHeapString implements AutoCloseable {
         this.length = len;
 
         // Allocate a native UTF-16 buffer sized for the source characters.
-        this.buffer = new OffHeapBuffer(len, 2);
+       this.buffer = new OffHeapBuffer(len + 1, 2);
 
         Unsafe unsafe = UnsafeHolder.get();
         long address = buffer.getAddress();
