@@ -23,11 +23,12 @@ public class OffHeapString implements AutoCloseable {
         if (source == null) {
             throw new NativeAllocationException("Source string cannot be null.");
         }
+
         int len = source.length();
         this.length = len;
 
-        // Allocate a native UTF-16 buffer sized for the source characters.
-       this.buffer = new OffHeapBuffer(len + 1, 2);
+        // Allocate extra space for null terminator
+        this.buffer = new OffHeapBuffer(len + 1, 2);
 
         Unsafe unsafe = UnsafeHolder.get();
         long address = buffer.getAddress();
@@ -36,34 +37,40 @@ public class OffHeapString implements AutoCloseable {
             unsafe.putChar(address + (i * 2L), source.charAt(i));
         }
 
-        // Append the C-style null terminator so readers can detect the string end.
+        // Null terminator
         unsafe.putChar(address + (len * 2L), '\0');
     }
 
     /**
      * Creates an empty off-heap string with a specified capacity.
      *
-     * @param capacity max characters the string can hold (excluding null-terminator)
+     * @param capacity max characters the string can hold (excluding null terminator)
      */
     public OffHeapString(int capacity) {
-        this.buffer = new OffHeapBuffer(capacity, 2);
+        this.buffer = new OffHeapBuffer(capacity + 1, 2);
         this.length = capacity;
-        // Zero out the first character so it acts as an empty string
+
+        // Initialize as empty string
         UnsafeHolder.get().putChar(buffer.getAddress(), '\0');
     }
 
     /**
-     * Appends a single character to the end of the string. The new character
-     * is written at the current logical length and the null terminator is
-     * advanced to the following slot.
+     * Appends a single character to the end of the string.
      *
      * @param ch the character to append
      */
     public void append(char ch) {
         Unsafe unsafe = UnsafeHolder.get();
         long base = buffer.getAddress();
-        unsafe.putChar(base + (length * 2L), ch);
-        unsafe.putChar(base + ((length + 1) * 2L), '\0');
+
+        int currentLength = toString().length();
+
+        if (currentLength >= length) {
+            throw new MemoryAccessException("OffHeapString capacity exceeded.");
+        }
+
+        unsafe.putChar(base + (currentLength * 2L), ch);
+        unsafe.putChar(base + ((currentLength + 1) * 2L), '\0');
     }
 
     /**
@@ -74,8 +81,11 @@ public class OffHeapString implements AutoCloseable {
      */
     public char charAt(int index) {
         if (index > length) {
-            throw new MemoryAccessException("OffHeapString index out of bounds: index=" + index + ", length=" + length);
+            throw new MemoryAccessException(
+                "OffHeapString index out of bounds: index=" + index + ", length=" + length
+            );
         }
+
         return UnsafeHolder.get().getChar(buffer.getAddress() + (index * 2L));
     }
 
@@ -90,15 +100,16 @@ public class OffHeapString implements AutoCloseable {
     /**
      * Copies the content of another OffHeapString into this string.
      *
-     * <p>Uses a strcpy-style loop that reads characters from the source
-     * native address and writes them into this string's address until the
-     * terminating null character is encountered.
-     *
      * @param source the source OffHeapString to copy from
      */
     public void copyFrom(OffHeapString source) {
         if (source == null) {
             throw new MemoryAccessException("Source string cannot be null.");
+        }
+
+        // Validate destination capacity before copying
+        if (source.getLength() > this.length) {
+            throw new MemoryAccessException("Source exceeds destination capacity.");
         }
 
         Unsafe unsafe = UnsafeHolder.get();
@@ -107,6 +118,7 @@ public class OffHeapString implements AutoCloseable {
 
         int i = 0;
         char ch;
+
         do {
             ch = unsafe.getChar(srcAddress + (i * 2L));
             unsafe.putChar(destAddress + (i * 2L), ch);
@@ -116,7 +128,6 @@ public class OffHeapString implements AutoCloseable {
 
     /**
      * Converts the off-heap string back into a standard Java String.
-     * Starts reading from the direct address until a null terminator '\0' is encountered.
      *
      * @return standard Java String representation
      */
@@ -124,17 +135,22 @@ public class OffHeapString implements AutoCloseable {
     public String toString() {
         Unsafe unsafe = UnsafeHolder.get();
         long address = buffer.getAddress();
+
         StringBuilder sb = new StringBuilder();
 
         int i = 0;
+
         while (true) {
             char ch = unsafe.getChar(address + (i * 2L));
+
             if (ch == '\0') {
                 break;
             }
+
             sb.append(ch);
             i++;
         }
+
         return sb.toString();
     }
 

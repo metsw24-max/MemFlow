@@ -1,11 +1,17 @@
 package com.memflow.core;
 
+import com.memflow.core.exception.MemoryAccessException;
 import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 
+/**
+ * Tests for {@link OffHeapString} — round-trip correctness against the JVM
+ * heap string equivalent, plus regression coverage for unsafe copy behavior.
+ */
 public class OffHeapStringTest {
 
     @Test
@@ -51,6 +57,17 @@ public class OffHeapStringTest {
                 assertEquals("", s.toString());
             }
         });
+    }
+
+    @Test
+    public void copyFromShouldThrowWhenSourceExceedsDestinationCapacity() {
+        try (OffHeapString dest = new OffHeapString(4);
+             OffHeapString src = new OffHeapString("TOO_LONG")) {
+
+            assertThrows(MemoryAccessException.class, () -> {
+                dest.copyFrom(src);
+            });
+        }
     }
 
     @Test
