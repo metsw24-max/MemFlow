@@ -1,10 +1,12 @@
 package com.memflow.core;
 
+import com.memflow.core.exception.MalformedPacketException;
 import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 
 /**
  * Tests for {@link BinaryPacketParser} — covers the happy-path packet decode
@@ -34,6 +36,84 @@ public class BinaryPacketParserTest {
                 assertEquals(0, parsedPayload.readByte(0));
                 assertEquals(99, parsedPayload.readByte(99));
             }
+        }
+    }
+
+    @Test
+    public void parsePayloadRejectsDeclaredLengthBeyondStreamCapacity() {
+        BinaryPacketParser parser = new BinaryPacketParser();
+
+        // Construct a stream that claims a 4000-byte payload but only has 32 bytes allocated.
+        // The parser should reject this before unsafe.copyMemory can read past the source buffer.
+        try (OffHeapBuffer stream = new OffHeapBuffer(32, 1)) {
+            stream.writeByte(0, (byte) 0x5F); // Magic
+            stream.writeByte(1, (byte) 0x03); // Type
+            stream.writeInt(2, 4000);         // Declared length exceeds remaining stream capacity
+
+            assertThrows(MalformedPacketException.class, () -> parser.parsePayload(stream, 0));
+        }
+    }
+
+    @Test
+    public void parsePayloadRejectsNegativePayloadLength() {
+        BinaryPacketParser parser = new BinaryPacketParser();
+
+        // Negative payload lengths must be rejected before route buffer allocation or native copy.
+        try (OffHeapBuffer stream = new OffHeapBuffer(16, 1)) {
+            stream.writeByte(0, (byte) 0x5F); // Magic
+            stream.writeByte(1, (byte) 0x01); // Type
+            stream.writeInt(2, -50);          // Invalid negative length
+
+            assertThrows(MalformedPacketException.class, () -> parser.parsePayload(stream, 0));
+        }
+    }
+
+    @Test
+    public void parseBatchRejectsPacketBoundaryBeyondStreamCapacity() {
+        BinaryPacketParser parser = new BinaryPacketParser();
+
+        // parseBatch uses the prevalidated payload length, so malformed packet boundaries
+        // should also be rejected during batch parsing.
+        try (OffHeapBuffer stream = new OffHeapBuffer(32, 1)) {
+            stream.writeByte(0, (byte) 0x5F); // Magic
+            stream.writeByte(1, (byte) 0x03); // Type
+            stream.writeInt(2, 4000);         // Declared length exceeds stream capacity
+
+            assertThrows(MalformedPacketException.class, () -> parser.parseBatch(stream, 0, 1));
+        }
+    }
+
+    @Test
+    public void parseVerifiedPayloadRejectsChecksumBeyondStreamCapacity() {
+        BinaryPacketParser parser = new BinaryPacketParser();
+
+        // Payload boundary is valid, but the checksum footer is missing.
+        // parseVerifiedPayload should reject the packet before reading checksum bytes out of bounds.
+        try (OffHeapBuffer stream = new OffHeapBuffer(10, 1)) {
+            stream.writeByte(0, (byte) 0x5F); // Magic
+            stream.writeByte(1, (byte) 0x04); // Type
+            stream.writeInt(2, 4);            // Payload length
+            stream.writeByte(6, (byte) 1);
+            stream.writeByte(7, (byte) 2);
+            stream.writeByte(8, (byte) 3);
+            stream.writeByte(9, (byte) 4);
+
+            assertThrows(MalformedPacketException.class, () -> parser.parseVerifiedPayload(stream, 0));
+        }
+    }
+
+    @Test
+    public void parsePayloadRejectsIntegerOverflowBoundary() {
+        BinaryPacketParser parser = new BinaryPacketParser();
+
+        // Uses a very large declared payload length to verify boundary calculation uses long arithmetic
+        // and does not silently pass because of int overflow.
+        try (OffHeapBuffer stream = new OffHeapBuffer(16, 1)) {
+            stream.writeByte(0, (byte) 0x5F);      // Magic
+            stream.writeByte(1, (byte) 0x05);      // Type
+            stream.writeInt(2, Integer.MAX_VALUE); // Large length should fail safely
+
+            assertThrows(MalformedPacketException.class, () -> parser.parsePayload(stream, 0));
         }
     }
 
