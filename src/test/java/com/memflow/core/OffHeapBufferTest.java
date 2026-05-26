@@ -3,8 +3,15 @@ package com.memflow.core;
 import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
 
+import com.memflow.core.exception.MemoryAccessException;
+
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+
+
+import com.memflow.core.exception.NativeAllocationException;
+
 
 /**
  * Tests for {@link OffHeapBuffer} — covers basic read/write correctness plus
@@ -12,6 +19,17 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
  * expected to investigate.
  */
 public class OffHeapBufferTest {
+
+    @Test
+public void testSliceRejectsOutOfBoundsView() {
+    OffHeapBuffer buffer = new OffHeapBuffer(10, 1);
+
+    assertThrows(MemoryAccessException.class, () ->
+        buffer.slice(8, 5)
+    );
+
+    buffer.release();
+}
 
     @Test
     public void testBasicBufferReadWrite() {
@@ -28,6 +46,21 @@ public class OffHeapBufferTest {
             assertEquals(500, buffer.readInt(5));
             assertEquals(999, buffer.readInt(9));
         }
+    }
+
+    @Test
+    public void testAllocationIntegerOverflowIsRejected() {
+        // (2^30 + 1) * 4 = 4,294,967,300 which overflows int to 4.
+        // Before the fix the constructor silently allocated 4 bytes while
+        // recording capacity as 1,073,741,825 — every subsequent bounds check
+        // passed against the recorded value while writes landed outside the
+        // real native block. The fix widens the multiply to long and throws.
+        int capacity = (1 << 30) + 1;
+        int elementSize = 4;
+
+        assertThrows(NativeAllocationException.class, () ->
+            new OffHeapBuffer(capacity, elementSize)
+        );
     }
 
     @Test

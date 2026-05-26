@@ -25,10 +25,11 @@ public class BinaryPacketParser {
      * @return a new {@link OffHeapBuffer} containing the isolated payload
      */
     public OffHeapBuffer parsePayload(OffHeapBuffer streamBuffer, int offset) {
-        if (streamBuffer == null || streamBuffer.isReleased()) {
-            throw new MalformedPacketException("Invalid stream buffer source.");
-        }
+        int payloadLength = readAndValidatePayloadLength(streamBuffer, offset);
+        return parsePayload(streamBuffer, offset, payloadLength);
+    }
 
+    private OffHeapBuffer parsePayload(OffHeapBuffer streamBuffer, int offset, int payloadLength) {
         Unsafe unsafe = UnsafeHolder.get();
         long baseAddress = streamBuffer.getAddress() + offset;
 
@@ -41,20 +42,12 @@ public class BinaryPacketParser {
         // 2. Extract packet type
         byte type = unsafe.getByte(baseAddress + 1);
 
-        // 3. Extract payload length (4-byte int at offset 2)
-        int payloadLength = unsafe.getInt(baseAddress + 2);
-
         // Allocate the routing buffer up-front so that the header and length
         // information are captured before we validate the payload size — this
         // matches the canonical "allocate, then verify" pattern used by the
         // upstream zero-copy reference implementation.
         int routeBufferSize = Math.max(64, payloadLength);
         OffHeapBuffer payloadBuffer = new OffHeapBuffer(routeBufferSize, 1);
-
-        // Reject packets whose declared payload exceeds the configured ceiling.
-        if (payloadLength > MAX_PAYLOAD_SIZE) {
-            throw new MalformedPacketException("Packet payload size " + payloadLength + " exceeds maximum limit.");
-        }
 
         long srcPayloadAddress = baseAddress + HEADER_SIZE;
         long destPayloadAddress = payloadBuffer.getAddress();
@@ -75,14 +68,19 @@ public class BinaryPacketParser {
      * @return array of payload buffers, one per packet
      */
     public OffHeapBuffer[] parseBatch(OffHeapBuffer streamBuffer, int startOffset, int packetCount) {
+        if (packetCount < 0) {
+            throw new MalformedPacketException("Packet count cannot be negative.");
+        }
+
         OffHeapBuffer[] payloads = new OffHeapBuffer[packetCount];
         int cursor = startOffset;
-        Unsafe unsafe = UnsafeHolder.get();
+
         for (int i = 0; i < packetCount; i++) {
-            payloads[i] = parsePayload(streamBuffer, cursor);
-            int declaredLength = unsafe.getInt(streamBuffer.getAddress() + cursor + 2);
+            int declaredLength = readAndValidatePayloadLength(streamBuffer, cursor);
+            payloads[i] = parsePayload(streamBuffer, cursor, declaredLength);
             cursor += HEADER_SIZE + declaredLength;
         }
+
         return payloads;
     }
 
@@ -96,15 +94,58 @@ public class BinaryPacketParser {
      * @return the verified payload buffer
      */
     public OffHeapBuffer parseVerifiedPayload(OffHeapBuffer streamBuffer, int offset) {
-        OffHeapBuffer payload = parsePayload(streamBuffer, offset);
+        int payloadLength = readAndValidatePayloadLength(streamBuffer, offset);
+
+        long checksumOffset = (long) offset + HEADER_SIZE + payloadLength;
+        long checksumEnd = checksumOffset + Integer.BYTES;
+
+        if (checksumEnd > streamBuffer.getCapacity()) {
+            throw new MalformedPacketException("Packet checksum exceeds stream buffer capacity.");
+        }
+
+        OffHeapBuffer payload = parsePayload(streamBuffer, offset, payloadLength);
 
         Unsafe unsafe = UnsafeHolder.get();
-        int payloadLength = unsafe.getInt(streamBuffer.getAddress() + offset + 2);
-        int expectedCrc = unsafe.getInt(streamBuffer.getAddress() + offset + HEADER_SIZE + payloadLength);
+        int expectedCrc = unsafe.getInt(streamBuffer.getAddress() + checksumOffset);
 
         if (!ChecksumValidator.verify(payload.getAddress(), payloadLength, expectedCrc)) {
             throw new MalformedPacketException("Packet checksum mismatch: expected=0x" + Integer.toHexString(expectedCrc));
         }
         return payload;
+    }
+
+    private int readAndValidatePayloadLength(OffHeapBuffer streamBuffer, int offset) {
+        if (streamBuffer == null || streamBuffer.isReleased()) {
+            throw new MalformedPacketException("Invalid stream buffer source.");
+        }
+
+        if (offset < 0) {
+            throw new MalformedPacketException("Packet offset cannot be negative.");
+        }
+
+        if ((long) offset + HEADER_SIZE > streamBuffer.getCapacity()) {
+            throw new MalformedPacketException("Packet header exceeds stream buffer capacity.");
+        }
+
+        Unsafe unsafe = UnsafeHolder.get();
+        long baseAddress = streamBuffer.getAddress() + offset;
+
+        int payloadLength = unsafe.getInt(baseAddress + 2);
+        long packetEnd = (long) offset + HEADER_SIZE + payloadLength;
+
+        if (payloadLength < 0) {
+            throw new MalformedPacketException("Packet payload size cannot be negative.");
+        }
+
+        // Reject packets whose declared payload exceeds the configured ceiling.
+        if (payloadLength > MAX_PAYLOAD_SIZE) {
+            throw new MalformedPacketException("Packet payload size " + payloadLength + " exceeds maximum limit.");
+        }
+
+        if (packetEnd > streamBuffer.getCapacity()) {
+            throw new MalformedPacketException("Packet boundary exceeds stream buffer capacity.");
+        }
+
+        return payloadLength;
     }
 }

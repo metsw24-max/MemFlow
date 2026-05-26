@@ -27,7 +27,7 @@ public class OffHeapString implements AutoCloseable {
         int len = source.length();
         this.length = len;
 
-        // Allocate a native UTF-16 buffer sized for the source characters.
+        // Allocate extra space for null terminator
         this.buffer = new OffHeapBuffer(len + 1, 2);
 
         Unsafe unsafe = UnsafeHolder.get();
@@ -37,20 +37,20 @@ public class OffHeapString implements AutoCloseable {
             unsafe.putChar(address + (i * 2L), source.charAt(i));
         }
 
-        // Append the C-style null terminator so readers can detect the string end.
+        // Null terminator
         unsafe.putChar(address + (len * 2L), '\0');
     }
 
     /**
      * Creates an empty off-heap string with a specified capacity.
      *
-     * @param capacity max characters the string can hold (excluding null-terminator)
+     * @param capacity max characters the string can hold (excluding null terminator)
      */
     public OffHeapString(int capacity) {
         this.buffer = new OffHeapBuffer(capacity + 1, 2);
         this.length = capacity;
 
-        // Zero out the first character so it acts as an empty string
+        // Initialize as empty string
         UnsafeHolder.get().putChar(buffer.getAddress(), '\0');
     }
 
@@ -60,18 +60,18 @@ public class OffHeapString implements AutoCloseable {
      * @param ch the character to append
      */
     public void append(char ch) {
-    Unsafe unsafe = UnsafeHolder.get();
-    long base = buffer.getAddress();
+        Unsafe unsafe = UnsafeHolder.get();
+        long base = buffer.getAddress();
 
-    int currentLength = toString().length();
+        int currentLength = toString().length();
 
-    if (currentLength >= length) {
-        throw new MemoryAccessException("OffHeapString capacity exceeded.");
+        if (currentLength >= length) {
+            throw new MemoryAccessException("OffHeapString capacity exceeded.");
+        }
+
+        unsafe.putChar(base + (currentLength * 2L), ch);
+        unsafe.putChar(base + ((currentLength + 1) * 2L), '\0');
     }
-
-    unsafe.putChar(base + (currentLength * 2L), ch);
-    unsafe.putChar(base + ((currentLength + 1) * 2L), '\0');
-}
 
     /**
      * Returns the character at the given offset.
