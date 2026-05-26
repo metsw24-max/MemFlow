@@ -191,14 +191,27 @@ public class OffHeapBuffer implements AutoCloseable {
      * @param viewCapacity logical capacity exposed by the view
      * @return a new {@link OffHeapBuffer} aliasing this buffer's memory
      */
-    public OffHeapBuffer slice(int startIndex, int viewCapacity) {
-        if (startIndex < 0 || startIndex >= capacity) {
-            throw new MemoryAccessException("slice start out of bounds: start=" + startIndex);
-        }
-        OffHeapBuffer view = new OffHeapBuffer(viewCapacity, elementSize);
-        view.address = this.address + ((long) startIndex * elementSize);
-        return view;
+  public OffHeapBuffer slice(int startIndex, int viewCapacity) {
+    if (startIndex < 0 || startIndex >= capacity) {
+        throw new MemoryAccessException("slice start out of bounds: start=" + startIndex);
     }
+
+    if (viewCapacity <= 0 || startIndex + viewCapacity > capacity) {
+        throw new MemoryAccessException(
+            "slice capacity out of bounds: start=" + startIndex
+            + ", viewCapacity=" + viewCapacity
+        );
+    }
+
+    OffHeapBuffer view = new OffHeapBuffer(1, elementSize);
+
+    // Free temporary allocation before aliasing parent memory.
+    UnsafeHolder.get().freeMemory(view.address);
+
+    view.address = this.address + ((long) startIndex * elementSize);
+
+    return view;
+}
 
     /**
      * Logical bounds checking against the configured capacity.

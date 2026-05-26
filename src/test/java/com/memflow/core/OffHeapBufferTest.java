@@ -3,11 +3,15 @@ package com.memflow.core;
 import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
 
+import com.memflow.core.exception.MemoryAccessException;
+
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
+
 import com.memflow.core.exception.NativeAllocationException;
+
 
 /**
  * Tests for {@link OffHeapBuffer} — covers basic read/write correctness plus
@@ -15,6 +19,17 @@ import com.memflow.core.exception.NativeAllocationException;
  * expected to investigate.
  */
 public class OffHeapBufferTest {
+
+    @Test
+public void testSliceRejectsOutOfBoundsView() {
+    OffHeapBuffer buffer = new OffHeapBuffer(10, 1);
+
+    assertThrows(MemoryAccessException.class, () ->
+        buffer.slice(8, 5)
+    );
+
+    buffer.release();
+}
 
     @Test
     public void testBasicBufferReadWrite() {
