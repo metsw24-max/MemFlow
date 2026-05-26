@@ -28,7 +28,7 @@ public class OffHeapString implements AutoCloseable {
         this.length = len;
 
         // Allocate a native UTF-16 buffer sized for the source characters.
-        this.buffer = new OffHeapBuffer(len, 2);
+        this.buffer = new OffHeapBuffer(len + 1, 2);
 
         Unsafe unsafe = UnsafeHolder.get();
         long address = buffer.getAddress();
@@ -47,7 +47,7 @@ public class OffHeapString implements AutoCloseable {
      * @param capacity max characters the string can hold (excluding null-terminator)
      */
     public OffHeapString(int capacity) {
-        this.buffer = new OffHeapBuffer(capacity, 2);
+        this.buffer = new OffHeapBuffer(capacity + 1, 2);
         this.length = capacity;
 
         // Zero out the first character so it acts as an empty string
@@ -60,12 +60,18 @@ public class OffHeapString implements AutoCloseable {
      * @param ch the character to append
      */
     public void append(char ch) {
-        Unsafe unsafe = UnsafeHolder.get();
-        long base = buffer.getAddress();
+    Unsafe unsafe = UnsafeHolder.get();
+    long base = buffer.getAddress();
 
-        unsafe.putChar(base + (length * 2L), ch);
-        unsafe.putChar(base + ((length + 1) * 2L), '\0');
+    int currentLength = toString().length();
+
+    if (currentLength >= length) {
+        throw new MemoryAccessException("OffHeapString capacity exceeded.");
     }
+
+    unsafe.putChar(base + (currentLength * 2L), ch);
+    unsafe.putChar(base + ((currentLength + 1) * 2L), '\0');
+}
 
     /**
      * Returns the character at the given offset.
