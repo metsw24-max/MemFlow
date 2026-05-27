@@ -10,6 +10,7 @@ import java.nio.file.Files;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 
 /**
  * Tests for {@link LogRecordIndexer} — covers indexing and slot resolution
@@ -28,6 +29,16 @@ public class LogRecordIndexerTest {
             assertEquals("WARN: Out of memory warning", indexer.getRecord(3));
         }
     }
+    @Test
+    public void testCloseIsIdempotent() {
+    LogRecordIndexer indexer = new LogRecordIndexer();
+    indexer.indexRecord(0, "first");
+
+    assertDoesNotThrow(() -> {
+        indexer.close();
+        indexer.close();
+    });
+}
 
     @Test
     @Disabled("Intentionally crashes the JVM with Segmentation Fault via direct null pointer dereference")

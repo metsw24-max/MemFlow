@@ -123,13 +123,14 @@ public class LogRecordIndexer implements AutoCloseable {
 
     @Override
     public void close() {
-        // Free all allocated off-heap strings
-        Unsafe unsafe = UnsafeHolder.get();
-        for (int i = 0; i < MAX_INDEX_SLOTS; i++) {
-            long address = indexAddresses[i];
-            if (address != 0L) {
-                unsafe.freeMemory(address);
-            }
+    // Free all allocated off-heap strings
+    Unsafe unsafe = UnsafeHolder.get();
+    for (int i = 0; i < MAX_INDEX_SLOTS; i++) {
+        long address = indexAddresses[i];
+        if (address != 0L) {
+            unsafe.freeMemory(address);
+            indexAddresses[i] = 0L;
         }
     }
+}
 }
