@@ -129,6 +129,7 @@ public class LogRecordIndexer implements AutoCloseable {
             long address = indexAddresses[i];
             if (address != 0L) {
                 unsafe.freeMemory(address);
+                indexAddresses[i] = 0L;
             }
         }
     }

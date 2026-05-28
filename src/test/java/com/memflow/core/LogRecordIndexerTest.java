@@ -7,6 +7,7 @@ import java.io.File;
 import java.io.IOException;
 import java.nio.file.Files;
 
+import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -30,6 +31,17 @@ public class LogRecordIndexerTest {
     }
 
     @Test
+    public void testCloseIsIdempotent() {
+        LogRecordIndexer indexer = new LogRecordIndexer();
+        indexer.indexRecord(0, "first");
+
+        assertDoesNotThrow(() -> {
+            indexer.close();
+            indexer.close();
+        });
+    }
+
+    @Test
     @Disabled("Intentionally crashes the JVM with Segmentation Fault via direct null pointer dereference")
     public void reproduceNullPointerCrash() {
         try (LogRecordIndexer indexer = new LogRecordIndexer()) {
@@ -37,18 +49,6 @@ public class LogRecordIndexerTest {
             // Attempting to read this direct NULL address triggers instant JVM crash
             indexer.getRecord(5);
         }
-    }
-
-    @Test
-    @Disabled("Intentionally demonstrates double-free when LogRecordIndexer.close is invoked twice")
-    public void reproduceIndexerDoubleClose() {
-        LogRecordIndexer indexer = new LogRecordIndexer();
-        indexer.indexRecord(0, "first");
-        indexer.indexRecord(1, "second");
-
-        indexer.close();
-        // Second close re-frees every populated slot — JVM crash territory.
-        indexer.close();
     }
 
     @Test
